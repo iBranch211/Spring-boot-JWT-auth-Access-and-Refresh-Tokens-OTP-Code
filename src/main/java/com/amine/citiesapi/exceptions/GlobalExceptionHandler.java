@@ -77,6 +77,18 @@ public class GlobalExceptionHandler {
         ErrorObject errorObject = new ErrorObject(HttpStatus.NOT_ACCEPTABLE.value(), "Unsupported media type", LocalDateTime.now());
         return new ResponseEntity<>(errorObject, HttpStatus.NOT_ACCEPTABLE);
     }
+    
+	@ExceptionHandler(UserAlreadyVerifiedException.class)
+	public ResponseEntity<ErrorObject> handleUserAlreadyVerifiedExceptions(UserAlreadyVerifiedException ex, WebRequest request){
+		ErrorObject errorObject =  new ErrorObject(HttpStatus.BAD_REQUEST.value(), ex.getMessage(), LocalDateTime.now());
+		return new ResponseEntity<ErrorObject>(errorObject, HttpStatus.BAD_REQUEST);
+	}
+	
+	@ExceptionHandler(InvalidRecaptchaTokenException.class)
+	public ResponseEntity<ErrorObject> handleInvalidRecaptchaExceptions(InvalidRecaptchaTokenException ex, WebRequest request){
+		ErrorObject errorObject =  new ErrorObject(HttpStatus.BAD_REQUEST.value(), ex.getMessage(), LocalDateTime.now());
+		return new ResponseEntity<ErrorObject>(errorObject, HttpStatus.BAD_REQUEST);
+	}
 	
 
 }

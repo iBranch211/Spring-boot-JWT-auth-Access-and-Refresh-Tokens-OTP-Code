@@ -22,7 +22,6 @@ import org.springframework.security.web.authentication.UsernamePasswordAuthentic
 
 @Configuration
 @EnableWebSecurity
-//@EnableMethodSecurity
 public class SecurityConfig {
 	
 	@Autowired
@@ -38,6 +37,7 @@ public class SecurityConfig {
         auth.requestMatchers("/api/manage/**").hasAuthority("ADMIN")
         .requestMatchers("/api/view/**").hasAnyAuthority("ADMIN","USER")
           .requestMatchers("/api/auth/**").permitAll()
+          .requestMatchers("/api/public/**").permitAll()
           .requestMatchers("/swagger-ui/**").permitAll()
           .requestMatchers("/v3/api-docs/**").permitAll()
               .anyRequest().authenticated()

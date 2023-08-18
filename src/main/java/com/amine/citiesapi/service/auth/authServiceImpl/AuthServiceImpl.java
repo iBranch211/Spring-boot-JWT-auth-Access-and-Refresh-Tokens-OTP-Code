@@ -17,7 +17,6 @@ import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.core.userdetails.UsernameNotFoundException;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
-import org.springframework.web.server.ResponseStatusException;
 
 import com.amine.citiesapi.dao.auth.AuthUserRepository;
 import com.amine.citiesapi.dao.auth.RoleRepository;
@@ -30,10 +29,13 @@ import com.amine.citiesapi.dto.RefreshTokenResponseDto;
 import com.amine.citiesapi.dto.RegisterRequestDto;
 import com.amine.citiesapi.dto.RegisterResponseDto;
 import com.amine.citiesapi.dto.SendEmailVerifyLinkResponseDto;
+import com.amine.citiesapi.dto.VerifyCaptchaResponse;
 import com.amine.citiesapi.dto.VerifyRegisterTokenResponseDto;
 import com.amine.citiesapi.entities.auth.AuthUser;
 import com.amine.citiesapi.entities.auth.Role;
+import com.amine.citiesapi.exceptions.InvalidRecaptchaTokenException;
 import com.amine.citiesapi.exceptions.OtpInvalidException;
+import com.amine.citiesapi.exceptions.UserAlreadyVerifiedException;
 import com.amine.citiesapi.exceptions.UserAuthenticationException;
 import com.amine.citiesapi.mail.EmailJwtTokenUtils;
 import com.amine.citiesapi.mail.MailService;
@@ -41,16 +43,17 @@ import com.amine.citiesapi.otp.OtpJwtTokenUtils;
 import com.amine.citiesapi.security.JwtRefreshTokenUtils;
 import com.amine.citiesapi.security.JwtTokenUtils;
 import com.amine.citiesapi.service.auth.AuthService;
+import com.amine.citiesapi.service.auth.VerifyCaptchaService;
 import com.amine.citiesapi.utils.GlobalUtilityMethods;
 
 import jakarta.mail.MessagingException;
 
 @Service
 public class AuthServiceImpl implements AuthService {
-	
+
 	@Value("${base_domain}")
 	private String baseDomain;
-	
+
 	@Autowired
 	private AuthenticationManager authenticationManager;
 	@Autowired
@@ -69,54 +72,63 @@ public class AuthServiceImpl implements AuthService {
 	private EmailJwtTokenUtils emailJwtTokenUtils;
 	@Autowired
 	private OtpJwtTokenUtils otpJwtTokenUtils;
+	@Autowired
+	private VerifyCaptchaService verifyCaptchaService;
 
 	public Map<String, Object> register(RegisterRequestDto request) {
 		HashMap<String, Object> responseMap = new HashMap<>();
-		if (authUserRepository.existsByUsername(request.getUsername())) {
 
-			responseMap.put("registerResponseDto", new RegisterResponseDto("This user already exists"));
-			responseMap.put("status", HttpStatus.BAD_REQUEST);
+		VerifyCaptchaResponse captchaVerification = verifyCaptchaService.verifyCaptcha(request.getRecaptchaToken());
+
+		if (captchaVerification.getSuccess()) {
+			if (authUserRepository.existsByUsername(request.getUsername())) {
+
+				responseMap.put("registerResponseDto", new RegisterResponseDto("This user already exists"));
+				responseMap.put("status", HttpStatus.BAD_REQUEST);
+
+				return responseMap;
+			}
+
+			AuthUser authUser = new AuthUser();
+			authUser.setFirstname(request.getFirstname());
+			authUser.setLastname(request.getLastname());
+			authUser.setUsername(request.getUsername());
+			authUser.setPassword(passwordEncoder.encode(request.getPassword()));
+
+			Role role = roleRepository.findByName("USER").get();
+
+			authUser.setRoles(Collections.singletonList(role));
+
+			authUserRepository.save(authUser);
+
+			responseMap.put("registerResponseDto", new RegisterResponseDto("User added successfully"));
+			responseMap.put("status", HttpStatus.CREATED);
+
+			String registrationToken = emailJwtTokenUtils.generateToken(request.getUsername());
+			StringBuilder emailBody = new StringBuilder();
+			emailBody.append("<h3>Verify your account below<h3>");
+			emailBody.append("<div><a href='" + baseDomain + "/api/auth/verify/register/account?registerToken="
+					+ registrationToken + "'>Click here to verify your account !</a></div>");
+			try {
+				mailService.sendHtmlEmail(request.getUsername(), "Verify your account", emailBody.toString());
+			} catch (MessagingException e) {
+				e.printStackTrace();
+			}
 
 			return responseMap;
+		} else {
+			throw new InvalidRecaptchaTokenException("The captcha test failed");
 		}
-
-		AuthUser authUser = new AuthUser();
-		authUser.setFirstname(request.getFirstname());
-		authUser.setLastname(request.getLastname());
-		authUser.setUsername(request.getUsername());
-		authUser.setPassword(passwordEncoder.encode(request.getPassword()));
-
-		Role role = roleRepository.findByName("USER").get();
-
-		authUser.setRoles(Collections.singletonList(role));
-
-		authUserRepository.save(authUser);
-
-		responseMap.put("registerResponseDto", new RegisterResponseDto("User added successfully"));
-		responseMap.put("status", HttpStatus.CREATED);
-
-		String registrationToken = emailJwtTokenUtils.generateToken(request.getUsername());
-		StringBuilder emailBody = new StringBuilder();
-		emailBody.append("<h3>Verify your account below<h3>");
-		emailBody.append("<div><a href='" + baseDomain + "/api/auth/verify/register/account?registerToken="
-				+ registrationToken + "'>Click here to verify your account !</a></div>");
-		try {
-			mailService.sendHtmlEmail(request.getUsername(), "Verify your account", emailBody.toString());
-		} catch (MessagingException e) {
-			e.printStackTrace();
-		}
-
-		return responseMap;
 	}
 
 	public Map<String, Object> login(LoginRequestDto request) throws AccessDeniedException {
 
 		try {
-			Authentication authentication = authenticationManager
-					.authenticate(new UsernamePasswordAuthenticationToken(request.getUsername(), request.getPassword()));
+			Authentication authentication = authenticationManager.authenticate(
+					new UsernamePasswordAuthenticationToken(request.getUsername(), request.getPassword()));
 			SecurityContextHolder.getContext().setAuthentication(authentication);
-		}catch(Exception e) {
-			throw new  UserAuthenticationException("Bad credentials");
+		} catch (Exception e) {
+			throw new UserAuthenticationException("Bad credentials");
 		}
 
 		Optional<AuthUser> authUser = authUserRepository.findByUsername(request.getUsername());
@@ -134,8 +146,8 @@ public class AuthServiceImpl implements AuthService {
 					authUserRepository.save(authUser.get());
 					String otpJwtToken = otpJwtTokenUtils.generateToken(authUser.get().getUsername());
 					HashMap<String, Object> responseMap = new HashMap<>();
-					responseMap.put("otpResponseDto",
-							new OtpGenerationResponseDto("A message was sent to you containing your OTP authentication code", otpJwtToken));
+					responseMap.put("otpResponseDto", new OtpGenerationResponseDto(
+							"A message was sent to you containing your OTP authentication code", otpJwtToken));
 					responseMap.put("status", HttpStatus.OK);
 
 					return responseMap;
@@ -210,9 +222,8 @@ public class AuthServiceImpl implements AuthService {
 				String registrationToken = emailJwtTokenUtils.generateToken(user.get().getUsername());
 				StringBuilder emailBody = new StringBuilder();
 				emailBody.append("<h3>Verify your account below<h3>");
-				emailBody.append(
-						"<div><a href='" + baseDomain + "/api/auth/verify/register/account?registerToken="
-								+ registrationToken + "'>Click here to verify your account !</a></div>");
+				emailBody.append("<div><a href='" + baseDomain + "/api/auth/verify/register/account?registerToken="
+						+ registrationToken + "'>Click here to verify your account !</a></div>");
 				try {
 					mailService.sendHtmlEmail(user.get().getUsername(), "Verify your account", emailBody.toString());
 				} catch (MessagingException e) {
@@ -220,7 +231,7 @@ public class AuthServiceImpl implements AuthService {
 				}
 				return responseMap;
 			} else {
-				throw new ResponseStatusException(HttpStatus.ACCEPTED, "This account is already verified");
+				throw new UserAlreadyVerifiedException("This account is already verified");
 			}
 		} else {
 			throw new UsernameNotFoundException("This user cannot be found");
@@ -230,38 +241,32 @@ public class AuthServiceImpl implements AuthService {
 	public Map<String, Object> verifyOtpCode(OtpVerificationRequestDto otpVerificationRequestDto) {
 		String otpJwtToken = otpVerificationRequestDto.getToken();
 		String otp = otpVerificationRequestDto.getOtp();
-		if(otpJwtTokenUtils.validateToken(otpJwtToken)) {
+		if (otpJwtTokenUtils.validateToken(otpJwtToken)) {
 			String username = otpJwtTokenUtils.getUsernameFromJwt(otpJwtToken);
 			Optional<AuthUser> user = authUserRepository.findByUsername(username);
-			if(user.isPresent()) {
-				if(user.get().getOtp().equals(otp)) {
-				
+			if (user.isPresent()) {
+				if (user.get().getOtp().equals(otp)) {
+
 					String accessToken = jwtTokenGenerator.generateToken(user.get().getUsername());
 					String refreshToken = jwtRefreshTokenGenerator.generateToken(user.get().getUsername());
 
 					HashMap<String, Object> responseMap = new HashMap<>();
 
-					responseMap.put("loginResponseDto", new LoginResponseDto("Authenticated successfully", accessToken, refreshToken));
+					responseMap.put("loginResponseDto",
+							new LoginResponseDto("Authenticated successfully", accessToken, refreshToken));
 					responseMap.put("status", HttpStatus.OK);
 
 					return responseMap;
-				}else {
+				} else {
 					throw new OtpInvalidException("OTP code is not valid");
 				}
-			}else {
+			} else {
 				throw new OtpInvalidException("OTP code is not valid");
 			}
-		}else {
+		} else {
 			throw new OtpInvalidException("OTP code has expired. Please login again.");
 		}
-		
+
 	}
 
 }
-
-
-
-
-
-
-

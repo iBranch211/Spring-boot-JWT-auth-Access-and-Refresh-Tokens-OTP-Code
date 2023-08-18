@@ -17,12 +17,16 @@ public class RegisterRequestDto {
 	@NotNull
 	@NotBlank(message = "Password name can't be blank")
 	private String password;
-	public RegisterRequestDto(String firstname, String lastname, String username, String password) {
+	@NotNull
+	@NotBlank(message = "Recaptcha token can't be blank")
+	private String recaptchaToken;
+	public RegisterRequestDto(String firstname, String lastname, String username, String password, String recaptchaToken) {
 		super();
 		this.firstname = firstname;
 		this.lastname = lastname;
 		this.username = username;
 		this.password = password;
+		this.recaptchaToken = recaptchaToken;
 	}
 	
 	public RegisterRequestDto() {}
@@ -58,12 +62,23 @@ public class RegisterRequestDto {
 	public void setPassword(String password) {
 		this.password = password;
 	}
+	
+	
+
+	public String getRecaptchaToken() {
+		return recaptchaToken;
+	}
+
+	public void setRecaptchaToken(String recaptchaToken) {
+		this.recaptchaToken = recaptchaToken;
+	}
 
 	@Override
 	public String toString() {
-		return "RegisterRequest [firstname=" + firstname + ", lastname=" + lastname + ", username=" + username
-				+ ", password=" + password + "]";
+		return "RegisterRequestDto [firstname=" + firstname + ", lastname=" + lastname + ", username=" + username
+				+ ", password=" + password + ", recaptchaToken=" + recaptchaToken + "]";
 	}
+
 	
 	
 
