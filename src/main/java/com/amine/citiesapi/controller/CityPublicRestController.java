@@ -23,9 +23,9 @@ import com.amine.citiesapi.utils.GlobalValues;
 
 import jakarta.validation.Valid;
 
-//@CrossOrigin(origins = "http://localhost:4200", maxAge = 3600)
 @RestController
 @RequestMapping("api/public")
+@CrossOrigin(origins = "http://localhost:4200")
 public class CityPublicRestController {
 		
 	@Autowired

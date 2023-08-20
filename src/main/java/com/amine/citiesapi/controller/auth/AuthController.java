@@ -29,9 +29,9 @@ import com.amine.citiesapi.service.auth.AuthService;
 
 import jakarta.validation.Valid;
 
-//@CrossOrigin(origins = "http://localhost:4200", maxAge = 3600)
 @RestController
 @RequestMapping("/api/auth")
+@CrossOrigin(origins = "http://localhost:4200")
 public class AuthController {
 
 	@Autowired
