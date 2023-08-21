@@ -1,6 +1,7 @@
 package com.amine.citiesapi.entities.auth;
 
 import jakarta.persistence.CascadeType;
+import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.FetchType;
 import jakarta.persistence.GeneratedValue;
@@ -18,6 +19,7 @@ public class AuthUser {
 	private Integer id;
 	private String firstname;
 	private String lastname;
+	@Column(unique=true)
 	private String username;
 	private String password;
 	private Boolean verified = false;

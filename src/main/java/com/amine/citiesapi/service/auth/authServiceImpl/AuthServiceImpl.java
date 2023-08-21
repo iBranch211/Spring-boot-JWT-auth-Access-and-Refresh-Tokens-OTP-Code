@@ -168,15 +168,22 @@ public class AuthServiceImpl implements AuthService {
 		}
 
 		String username = jwtRefreshTokenGenerator.getUsernameFromJwt(request.getRefreshToken());
-		String accessToken = jwtTokenGenerator.generateToken(username);
+		
+		Optional<AuthUser> user = authUserRepository.findByUsername(username);
+		
+		if(user.isPresent()) {
+			String accessToken = jwtTokenGenerator.generateToken(username);
 
-		Map<String, Object> responseMap = new HashMap<>();
+			Map<String, Object> responseMap = new HashMap<>();
 
-		responseMap.put("refreshTokenResponseDto",
-				new RefreshTokenResponseDto("Authenticated successfully", accessToken));
-		responseMap.put("status", HttpStatus.OK);
+			responseMap.put("refreshTokenResponseDto",
+					new RefreshTokenResponseDto("Authenticated successfully", accessToken, user.get().getRoles()));
+			responseMap.put("status", HttpStatus.OK);
 
-		return responseMap;
+			return responseMap;
+		}else {
+			throw new AuthenticationCredentialsNotFoundException("Token was expired or incorrect");
+		}
 	}
 
 	public Map<String, Object> verifyRegisterToken(String registerToken) {
@@ -253,7 +260,7 @@ public class AuthServiceImpl implements AuthService {
 					HashMap<String, Object> responseMap = new HashMap<>();
 
 					responseMap.put("loginResponseDto",
-							new LoginResponseDto("Authenticated successfully", accessToken, refreshToken));
+							new LoginResponseDto("Authenticated successfully", accessToken, refreshToken, user.get().getRoles()));
 					responseMap.put("status", HttpStatus.OK);
 
 					return responseMap;
